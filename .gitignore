@@ -1,0 +1,36 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Ignore all Markdown files as requested
+*.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# Node / Nuxt / Frontend
+node_modules/
+.nuxt/
+.output/
+dist/
+.nitro/
+.cache/
+
+# System & IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
