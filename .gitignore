@@ -8,8 +8,9 @@ frontend/.env
 !backend/.env.example
 !frontend/.env.example
 
-# Ignore all Markdown files as requested
+# Ignore Markdown files except README.md
 *.md
+!README.md
 
 # Python
 __pycache__/
