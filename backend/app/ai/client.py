@@ -18,11 +18,33 @@ class AIClient:
             return self._mock_dna(source, response_model)
         if not self.settings.openai_api_key:
             raise AppError("AI_NOT_CONFIGURED", "AI analysis is not configured on this server.", 503)
-        payload = {"model": self.settings.openai_model, "instructions": instructions, "input": source, "store": False, "text": {"format": {"type": "json_schema", "name": response_model.__name__, "strict": True, "schema": response_model.model_json_schema()}}}
+        payload = {
+            "model": self.settings.openai_model,
+            "instructions": instructions,
+            "input": source,
+            "store": False,
+            "temperature": 0.3,
+            "max_output_tokens": 4096,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": response_model.__name__,
+                    "strict": True,
+                    "schema": response_model.model_json_schema(),
+                }
+            },
+        }
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {self.settings.openai_api_key}", "Content-Type": "application/json"}, json=payload)
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(
+                        "https://api.openai.com/v1/responses",
+                        headers={
+                            "Authorization": f"Bearer {self.settings.openai_api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    )
                 if response.status_code == 429 or response.status_code >= 500:
                     if attempt < 2:
                         await asyncio.sleep(attempt + 1)
@@ -30,7 +52,11 @@ class AIClient:
                     raise AppError("AI_UNAVAILABLE", "AI analysis is temporarily unavailable. Please try again.", 503)
                 if response.status_code >= 400:
                     raise AppError("AI_ERROR", "We couldn't analyze this content right now. Please try again.", 502)
-                return response_model.model_validate_json(response.json()["output_text"])
+                data = response.json()
+                # Check for refusal — the model may refuse if content violates policies
+                if data.get("status") == "incomplete" or data.get("output_text") is None:
+                    raise AppError("AI_REFUSED", "The content could not be processed. Please review your source material.", 422)
+                return response_model.model_validate_json(data["output_text"])
             except (httpx.HTTPError, KeyError, json.JSONDecodeError, ValueError) as exc:
                 if attempt == 2:
                     raise AppError("AI_INVALID_RESPONSE", "We couldn't analyze this content right now. Please try again.", 502) from exc
