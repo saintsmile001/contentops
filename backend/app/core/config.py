@@ -53,5 +53,11 @@ def get_settings() -> Settings:
         "max_source_words": "MAX_SOURCE_WORDS",
         "min_source_words": "MIN_SOURCE_WORDS",
     }
-    values = {field: os.environ.get(name, file_values.get(name)) for field, name in fields.items() if os.environ.get(name, file_values.get(name)) is not None}
+    values = {}
+    for field, name in fields.items():
+        val = os.environ.get(name, file_values.get(name))
+        if val is not None:
+            if isinstance(val, str):
+                val = val.strip()
+            values[field] = val
     return Settings(**values)
