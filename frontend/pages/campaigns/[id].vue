@@ -67,24 +67,34 @@ async function load() {
 
 async function generate() {
   try {
+    if (poller) clearInterval(poller)
     await request(`/campaigns/${route.params.id}/generate`, { method: 'POST' })
     campaign.value.status = 'GENERATING'
     progress.value = 10
     poller = setInterval(async () => {
-      progress.value = Math.min(progress.value + 15, 90)
-      await load()
-      if (campaign.value?.status !== 'GENERATING') {
-        progress.value = 100
-        clearInterval(poller)
-        if (campaign.value?.status === 'COMPLETED') {
-          await Promise.all([loadAssets(), loadCalendar()])
+      try {
+        progress.value = Math.min(progress.value + 15, 90)
+        await load()
+        if (error.value || campaign.value?.status !== 'GENERATING') {
+          progress.value = 100
+          clearInterval(poller)
+          if (campaign.value?.status === 'COMPLETED') {
+            await Promise.all([loadAssets(), loadCalendar()])
+          }
         }
+      } catch (e) {
+        clearInterval(poller)
+        error.value = e instanceof Error ? e.message : 'We could not check campaign generation status.'
       }
     }, 1500)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'We could not generate this campaign.'
   }
 }
+
+onUnmounted(() => {
+  if (poller) clearInterval(poller)
+})
 
 async function generateAssets() {
   if (assetsLoading.value) return

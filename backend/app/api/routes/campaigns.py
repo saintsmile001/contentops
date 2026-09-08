@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -21,6 +22,7 @@ from app.services.content_service import ContentService
 from app.services.qa_service import QAService
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
+logger = logging.getLogger(__name__)
 
 # FastAPI background tasks run after the response is sent. Keep a small in-process
 # lock so a double-click cannot queue two expensive generations for one campaign.
@@ -88,6 +90,7 @@ async def _generate_task(svc: CampaignService, settings: Settings, token: str, c
         await asyncio.gather(*(review(asset) for asset in generated))
         await campaigns.update_status(campaign_id, "COMPLETED")
     except Exception:
+        logger.exception("Campaign generation failed for campaign_id=%s", campaign_id)
         await CampaignRepository(settings, token).update_status(campaign_id, "FAILED")
     finally:
         generation_inflight.discard(campaign_id)
