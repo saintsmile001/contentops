@@ -7,14 +7,30 @@ export function useApi() {
       throw new Error('Authentication is not configured yet.')
     }
     const { data } = await client.auth.getSession()
-    if (!data.session) throw new Error('Please sign in before creating a source.')
+    if (!data.session) throw new Error('Please sign in before completing this action.')
 
     const response = await fetch(`${config.public.apiBaseUrl}${path}`, {
       ...options,
       headers: { Authorization: `Bearer ${data.session.access_token}`, ...(options.headers || {}) }
     })
-    const payload = await response.json()
-    if (!response.ok) throw new Error(payload.error?.message || 'We could not save your source right now.')
+
+    if (response.status === 204) {
+      return null as T
+    }
+
+    const text = await response.text()
+    let payload: any = {}
+    if (text) {
+      try {
+        payload = JSON.parse(text)
+      } catch {
+        payload = { error: { message: text } }
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(payload.error?.message || 'We could not complete this request right now.')
+    }
     return payload.data as T
   }
 

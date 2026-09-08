@@ -63,8 +63,78 @@ class SourceRepository:
     async def delete_for_user(self, source_id: str, user_id: str) -> None:
         self._require_config()
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.delete(f"{self.settings.supabase_url.rstrip('/')}/rest/v1/source_contents", headers={**self._headers, "Prefer": "return=minimal"}, params={"id": f"eq.{source_id}", "user_id": f"eq.{user_id}"})
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                # 1. Fetch source to verify existence and check for attached storage file
+                source_res = await client.get(
+                    f"{self.settings.supabase_url.rstrip('/')}/rest/v1/source_contents",
+                    headers=self._headers,
+                    params={"select": "*", "id": f"eq.{source_id}", "user_id": f"eq.{user_id}"}
+                )
+                source_rows = source_res.json() if source_res.status_code == 200 else []
+                if not source_rows:
+                    raise AppError("SOURCE_NOT_FOUND", "This source was not found.", 404)
+
+                source = source_rows[0]
+
+                # 2. Clear content_dna dependent records
+                await client.delete(
+                    f"{self.settings.supabase_url.rstrip('/')}/rest/v1/content_dna",
+                    headers=self._headers,
+                    params={"source_id": f"eq.{source_id}"}
+                )
+
+                # 3. Clear dependent campaigns and their sub-assets/strategies
+                campaigns_res = await client.get(
+                    f"{self.settings.supabase_url.rstrip('/')}/rest/v1/campaigns",
+                    headers=self._headers,
+                    params={"select": "id", "source_id": f"eq.{source_id}", "user_id": f"eq.{user_id}"}
+                )
+                c_rows = campaigns_res.json() if campaigns_res.status_code == 200 else []
+                for c in c_rows:
+                    c_id = c.get("id")
+                    if c_id:
+                        await client.delete(
+                            f"{self.settings.supabase_url.rstrip('/')}/rest/v1/campaign_strategies",
+                            headers=self._headers,
+                            params={"campaign_id": f"eq.{c_id}"}
+                        )
+                        assets_res = await client.get(
+                            f"{self.settings.supabase_url.rstrip('/')}/rest/v1/content_assets",
+                            headers=self._headers,
+                            params={"select": "id", "campaign_id": f"eq.{c_id}"}
+                        )
+                        asset_rows = assets_res.json() if assets_res.status_code == 200 else []
+                        for a in asset_rows:
+                            await client.delete(
+                                f"{self.settings.supabase_url.rstrip('/')}/rest/v1/qa_reports",
+                                headers=self._headers,
+                                params={"asset_id": f"eq.{a['id']}"}
+                            )
+                        await client.delete(
+                            f"{self.settings.supabase_url.rstrip('/')}/rest/v1/content_assets",
+                            headers=self._headers,
+                            params={"campaign_id": f"eq.{c_id}"}
+                        )
+                        await client.delete(
+                            f"{self.settings.supabase_url.rstrip('/')}/rest/v1/campaigns",
+                            headers=self._headers,
+                            params={"id": f"eq.{c_id}", "user_id": f"eq.{user_id}"}
+                        )
+
+                # 4. If a uploaded file URL exists, delete from storage
+                if source.get("file_url"):
+                    file_path = source["file_url"]
+                    await client.delete(
+                        f"{self.settings.supabase_url.rstrip('/')}/storage/v1/object/source-files/{file_path}",
+                        headers=self._headers
+                    )
+
+                # 5. Delete source_contents row
+                response = await client.delete(
+                    f"{self.settings.supabase_url.rstrip('/')}/rest/v1/source_contents",
+                    headers={**self._headers, "Prefer": "return=minimal"},
+                    params={"id": f"eq.{source_id}", "user_id": f"eq.{user_id}"}
+                )
         except httpx.HTTPError as exc:
             raise AppError("DATABASE_UNAVAILABLE", "We couldn't delete this source right now. Please try again.", 503) from exc
         if response.status_code not in {200, 204}:
