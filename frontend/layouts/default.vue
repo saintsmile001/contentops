@@ -145,7 +145,7 @@ const navLinks = computed(() => [
         <div class="flex items-center gap-6 text-xs text-slate-500">
           <span>Supabase RLS Secured</span>
           <span>·</span>
-          <span>FastAPI + Gemini AI</span>
+          <span>FastAPI + OpenAI</span>
           <span>·</span>
           <span>Nuxt 3</span>
         </div>
